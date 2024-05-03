@@ -51,62 +51,60 @@ export function isEqualNode(oldTag: Element, newTag: Element) {
 let updateElements: (type: string, components: JSX.Element[]) => void
 
 if (process.env.__NEXT_STRICT_NEXT_HEAD) {
-  updateElements = (type: string, components: JSX.Element[]) => {
-    const headEl = document.querySelector('head')
-    if (!headEl) return
-
-    const headMetaTags = headEl.querySelectorAll('meta[name="next-head"]') || []
-    const oldTags: Element[] = []
-
-    if (type === 'meta') {
-      const metaCharset = headEl.querySelector('meta[charset]')
-      if (metaCharset) {
-        oldTags.push(metaCharset)
-      }
+  updateElements = (type, components) => {
+    const headElement = document.querySelector('head')
+    if (headElement === null) {
+      return
     }
 
-    for (let i = 0; i < headMetaTags.length; i++) {
-      const metaTag = headMetaTags[i]
-      const headTag = metaTag.nextSibling as Element
-
-      if (headTag?.tagName?.toLowerCase() === type) {
-        oldTags.push(headTag)
-      }
-    }
-    const newTags = (components.map(reactElementToDOM) as HTMLElement[]).filter(
-      (newTag) => {
-        for (let k = 0, len = oldTags.length; k < len; k++) {
-          const oldTag = oldTags[k]
-          if (isEqualNode(oldTag, newTag)) {
-            oldTags.splice(k, 1)
-            return false
-          }
-        }
-        return true
-      }
+    const oldTags = new Set(
+      headElement.querySelectorAll(`${type}[data-next-head]:not(title)`)
     )
 
-    oldTags.forEach((t) => {
-      const metaTag = t.previousSibling as Element
-      if (metaTag && metaTag.getAttribute('name') === 'next-head') {
-        t.parentNode?.removeChild(metaTag)
+    if (type === 'meta') {
+      const metaCharset = headElement.querySelector('meta[charset]')
+      if (metaCharset !== null) {
+        oldTags.add(metaCharset)
       }
-      t.parentNode?.removeChild(t)
-    })
-    newTags.forEach((t) => {
-      const meta = document.createElement('meta')
-      meta.name = 'next-head'
-      meta.content = '1'
+    }
 
-      // meta[charset] must be first element so special case
-      if (!(t.tagName?.toLowerCase() === 'meta' && t.getAttribute('charset'))) {
-        headEl.appendChild(meta)
+    const newTags: Element[] = []
+    for (let i = 0; i < components.length; i++) {
+      const component = components[i]
+      const newTag = reactElementToDOM(component)
+      newTag.setAttribute('data-next-head', '')
+
+      let isNew = true
+      for (const oldTag of oldTags) {
+        if (isEqualNode(oldTag, newTag)) {
+          oldTags.delete(oldTag)
+          isNew = false
+          break
+        }
       }
-      headEl.appendChild(t)
-    })
+
+      if (isNew) {
+        newTags.push(newTag)
+      }
+    }
+
+    for (const oldTag of oldTags) {
+      oldTag.parentNode?.removeChild(oldTag)
+    }
+
+    for (const newTag of newTags) {
+      // meta[charset] must be first element so special case
+      if (
+        newTag.tagName.toLowerCase() === 'meta' &&
+        newTag.getAttribute('charset') !== null
+      ) {
+        headElement.prepend(newTag)
+      }
+      headElement.appendChild(newTag)
+    }
   }
 } else {
-  updateElements = (type: string, components: JSX.Element[]) => {
+  updateElements = (type, components) => {
     const headEl = document.getElementsByTagName('head')[0]
     const headCountEl: HTMLMetaElement = headEl.querySelector(
       'meta[name=next-head-count]'
